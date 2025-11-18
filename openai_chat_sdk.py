@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenAI 命令行对话程序 (使用官方SDK)
+OpenAI 命令行对话程序 (使用官方SDK) - 修复版
 支持连续对话和流式输出
 """
 
@@ -27,15 +27,19 @@ def stream_chat(client, messages):
             stream=True
         )
         
+        assistant_reply = ""
         for chunk in stream:
-            if chunk.choices[0].delta.content:
+            # 检查 delta 是否存在以及是否有 content
+            if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
                 content = chunk.choices[0].delta.content
                 print(content, end='', flush=True)
-                yield content
+                assistant_reply += content
+        
+        return assistant_reply
                 
     except Exception as e:
         print(f"\n错误: {str(e)}", file=sys.stderr)
-        return
+        return ""
 
 
 def main():
@@ -78,10 +82,8 @@ def main():
             # 显示AI回复
             print("AI: ", end='', flush=True)
             
-            # 收集AI回复
-            assistant_reply = ""
-            for chunk in stream_chat(client, messages):
-                assistant_reply += chunk
+            # 获取AI回复
+            assistant_reply = stream_chat(client, messages)
             
             print()  # 换行
             
