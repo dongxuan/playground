@@ -13,7 +13,11 @@ import os
 from typing import Any, Dict, List, Optional
 
 import httpx
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+
+# Load .env file
+load_dotenv()
 
 
 APP_NAME = "github-mcp-demo"
@@ -119,5 +123,37 @@ async def list_repositories(
     return repos
 
 
+async def test_list(visibility: Optional[str] = None, affiliation: Optional[str] = None):
+    """Test function to list repos directly."""
+    try:
+        repos = await list_repositories(visibility, affiliation)
+        print(f"\n找到 {len(repos)} 个仓库:\n")
+        for repo in repos:
+            print(f"  - {repo['full_name']} ({repo['visibility']})")
+            if repo.get('description'):
+                print(f"    {repo['description']}")
+        print()
+    except Exception as e:
+        print(f"错误: {e}")
+
+
 if __name__ == "__main__":
-    asyncio.run(app.run())
+    import sys
+
+    # Check for test mode
+    if "--test" in sys.argv:
+        # Parse simple args for test
+        visibility = None
+        affiliation = None
+        args = sys.argv[1:]
+        for i, arg in enumerate(args):
+            if arg == "--visibility" and i + 1 < len(args):
+                visibility = args[i + 1]
+            elif arg == "--affiliation" and i + 1 < len(args):
+                affiliation = args[i + 1]
+
+        print("测试模式: 列出仓库...")
+        asyncio.run(test_list(visibility, affiliation))
+    else:
+        # Run as MCP server
+        asyncio.run(app.run())
