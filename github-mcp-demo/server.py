@@ -3,22 +3,18 @@
 Environment variables:
     GITHUB_TOKEN: personal access token used for authentication.
     GITHUB_API_URL: base API URL (default: https://api.github.com).
-    GITHUB_VERIFY_SSL: set to "false" to skip TLS verification (not recommended).
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import subprocess
 from typing import Any, Dict, List, Optional
 
-import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
-
 
 # Load .env file
 load_dotenv()
@@ -30,7 +26,7 @@ DEFAULT_API_URL = "https://api.github.com"
 app = FastMCP(APP_NAME)
 
 
-def get_settings() -> tuple[str, str, bool]:
+def get_settings() -> tuple[str, str]:
     """Load GitHub-related settings from environment."""
     api_url = os.environ.get("GITHUB_API_URL", DEFAULT_API_URL).rstrip("/")
     token = os.environ.get("GITHUB_TOKEN")
@@ -39,29 +35,7 @@ def get_settings() -> tuple[str, str, bool]:
             "GITHUB_TOKEN is required to list repositories. "
             "Create a Personal Access Token and export it before running the MCP server."
         )
-    verify = False
-    return api_url, token, verify
-
-
-def get_github_client() -> httpx.AsyncClient:
-    """Return a configured HTTPX client for the GitHub API."""
-    api_url, token, verify = get_settings()
-
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": f"{APP_NAME}/0.1",
-    }
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    transport = httpx.AsyncHTTPTransport(retries=2)
-    return httpx.AsyncClient(
-        base_url=api_url,
-        headers=headers,
-        verify=False,
-        transport=transport,
-        timeout=httpx.Timeout(15.0, read=30.0),
-    )
+    return api_url, token
 
 
 def format_repo(repo: Dict[str, Any]) -> Dict[str, Any]:
@@ -80,32 +54,76 @@ def format_repo(repo: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def curl_request(url: str, token: str) -> List[Dict[str, Any]]:
+    """Execute curl command to fetch data from GitHub API."""
+    cmd = [
+        "curl",
+        "-k",  # Ignore SSL certificate verification
+        "-s",  # Silent mode
+        "-H", f"Accept: application/vnd.github+json",
+        "-H", f"Authorization: Bearer {token}",
+        "-H", f"User-Agent: {APP_NAME}/0.1",
+        url
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
+
+    if result.returncode == 401 or result.returncode == 403:
+        raise RuntimeError(
+            "GitHub authentication failed. Check GITHUB_TOKEN or permissions."
+        )
+
+    if result.returncode != 0:
+        raise RuntimeError(f"curl failed with code {result.returncode}: {result.stderr}")
+
+    try:
+        data = json.loads(result.stdout)
+        return data if isinstance(data, list) else []
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Failed to parse JSON response: {e}\nResponse: {result.stdout}")
+
+
 async def fetch_repos(
     visibility: Optional[str],
     affiliation: Optional[str],
     per_page: int = 100,
 ) -> List[Dict[str, Any]]:
-    """Fetch repositories for the authenticated user."""
-    params: Dict[str, Any] = {"per_page": per_page, "page": 1}
+    """Fetch repositories for the authenticated user using curl."""
+    api_url, token = get_settings()
+
+    # Build query parameters
+    params = [f"per_page={per_page}", "page=1"]
     if visibility:
-        params["visibility"] = visibility
+        params.append(f"visibility={visibility}")
     if affiliation:
-        params["affiliation"] = affiliation
+        params.append(f"affiliation={affiliation}")
+
+    query_string = "&".join(params)
+    url = f"{api_url}/user/repos?{query_string}"
 
     repos: List[Dict[str, Any]] = []
-    async with get_github_client() as client:
-        while True:
-            response = await client.get("/user/repos", params=params)
-            if response.status_code == 401:
-                raise RuntimeError(
-                    "GitHub authentication failed. Check GITHUB_TOKEN or permissions."
-                )
-            response.raise_for_status()
-            batch = response.json()
-            repos.extend(format_repo(repo) for repo in batch)
-            if "next" not in response.links:
-                break
-            params["page"] += 1
+    page = 1
+
+    while True:
+        # Update page number in URL
+        params_with_page = [p for p in params if not p.startswith("page=")]
+        params_with_page.append(f"page={page}")
+        query_string = "&".join(params_with_page)
+        url = f"{api_url}/user/repos?{query_string}"
+
+        batch = curl_request(url, token)
+
+        if not batch:
+            break
+
+        repos.extend(format_repo(repo) for repo in batch)
+
+        # If we got less than per_page results, we're done
+        if len(batch) < per_page:
+            break
+
+        page += 1
+
     return repos
 
 
