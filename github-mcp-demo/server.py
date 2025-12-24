@@ -16,6 +16,10 @@ import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+
 # Load .env file
 load_dotenv()
 
@@ -35,7 +39,7 @@ def get_settings() -> tuple[str, str, bool]:
             "GITHUB_TOKEN is required to list repositories. "
             "Create a Personal Access Token and export it before running the MCP server."
         )
-    verify = os.environ.get("GITHUB_VERIFY_SSL", "true").lower() != "false"
+    verify = False
     return api_url, token, verify
 
 
@@ -54,7 +58,7 @@ def get_github_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         base_url=api_url,
         headers=headers,
-        verify=verify,
+        verify=False,
         transport=transport,
         timeout=httpx.Timeout(15.0, read=30.0),
     )
