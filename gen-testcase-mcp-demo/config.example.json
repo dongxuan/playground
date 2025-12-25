@@ -1,0 +1,15 @@
+{
+  "script_path": "~/my-workspace/scripts/gen_testcase.sh",
+  "description": "配置说明：",
+  "instructions": [
+    "1. 复制此文件为 config.json",
+    "2. 将 script_path 改为你工作区中实际的脚本路径",
+    "3. 支持绝对路径和 ~ 开头的路径",
+    "4. 确保脚本文件存在且有执行权限 (chmod +x)"
+  ],
+  "examples": {
+    "workspace_script": "~/my-workspace/tools/gen_testcase.sh",
+    "absolute_path": "/home/user/projects/app/scripts/gen_testcase.sh",
+    "system_script": "/usr/local/bin/gen_testcase.sh"
+  }
+}

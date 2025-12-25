@@ -1,0 +1,4 @@
+{
+  "script_path": "/data/apps/test/gen_testcase.sh",
+  "description": "配置说明：将 script_path 改为你工作区中 gen_testcase.sh 的绝对路径"
+}

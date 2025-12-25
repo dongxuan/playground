@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x gen_testcase.sh server.py)",
+      "Bash(python server.py:*)",
+      "Bash(ls:*)",
+      "Bash(set TESTCASE_SCRIPT_PATH=gen_testcase.cmd)",
+      "Bash(set:*)"
+    ]
+  }
+}
