@@ -1,0 +1,9 @@
+{
+  "host": "your.server.com",
+  "port": 22,
+  "username": "your_username",
+  "password": "your_password",
+  "key_file": "/path/to/your/private/key",
+  "default_remote_dir": "/home/user/scripts",
+  "default_script": "run.sh"
+}
