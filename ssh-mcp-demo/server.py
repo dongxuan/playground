@@ -291,6 +291,153 @@ def list_remote_directory(
     except Exception as e:
         return f"Error listing directory: {str(e)}"
 
+def _should_download_file(filename: str, allowed_extensions: list) -> bool:
+    """
+    Check if a file should be downloaded based on allowed extensions
+
+    Args:
+        filename: The filename to check
+        allowed_extensions: List of allowed file extensions (e.g., ['.cpp', '.c'])
+
+    Returns:
+        True if file should be downloaded, False otherwise
+    """
+    if not allowed_extensions:
+        return True
+
+    _, ext = os.path.splitext(filename)
+    return ext.lower() in [e.lower() if e.startswith('.') else f'.{e.lower()}' for e in allowed_extensions]
+
+def _download_recursive(sftp, remote_path: str, local_path: str, allowed_extensions: list) -> list:
+    """
+    Recursively download files from remote path to local path
+
+    Args:
+        sftp: SFTP client
+        remote_path: Remote directory or file path
+        local_path: Local directory or file path
+        allowed_extensions: List of allowed file extensions
+
+    Returns:
+        List of downloaded files
+    """
+    downloaded_files = []
+
+    try:
+        # Check if remote path is a file or directory
+        file_attr = sftp.stat(remote_path)
+
+        # If it's a file
+        if not file_attr.st_mode & 0o040000:  # Not a directory
+            if _should_download_file(remote_path, allowed_extensions):
+                # Create parent directory if needed
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                sftp.get(remote_path, local_path)
+                downloaded_files.append(local_path)
+            return downloaded_files
+
+        # If it's a directory, recursively download
+        os.makedirs(local_path, exist_ok=True)
+
+        for item in sftp.listdir_attr(remote_path):
+            remote_item = os.path.join(remote_path, item.filename).replace('\\', '/')
+            local_item = os.path.join(local_path, item.filename)
+
+            # Check if item is a directory
+            if item.st_mode & 0o040000:  # Is a directory
+                # Recursively download directory
+                downloaded_files.extend(_download_recursive(sftp, remote_item, local_item, allowed_extensions))
+            else:
+                # Download file if it matches extension filter
+                if _should_download_file(item.filename, allowed_extensions):
+                    sftp.get(remote_item, local_item)
+                    downloaded_files.append(local_item)
+
+        return downloaded_files
+
+    except Exception as e:
+        raise Exception(f"Error downloading from {remote_path}: {str(e)}")
+
+@mcp.tool()
+def download_file(
+    remote_path: str,
+    local_dir: Optional[str] = None,
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    key_file: Optional[str] = None
+) -> str:
+    """
+    Download a file or directory from the remote server via SSH/SFTP
+
+    Args:
+        remote_path: Remote file or directory path (can be absolute or relative to default_remote_dir)
+        local_dir: Local directory to save downloaded files (uses config.json default_local_download_dir if not provided)
+        host: SSH host (uses config.json if not provided)
+        port: SSH port (uses config.json if not provided)
+        username: SSH username (uses config.json if not provided)
+        password: SSH password (optional, uses config.json if not provided)
+        key_file: Path to SSH private key file (optional)
+
+    Returns:
+        Success message with list of downloaded files
+    """
+    try:
+        # Load config for missing parameters
+        config = load_config()
+        host = host or config.get('host')
+        port = port or config.get('port', 22)
+        username = username or config.get('username')
+        password = password or config.get('password')
+        key_file = key_file or config.get('key_file')
+        local_dir = local_dir or config.get('default_local_download_dir', './downloads')
+        allowed_extensions = config.get('allowed_file_extensions', [])
+
+        if not all([host, username, remote_path]):
+            return "Error: Missing required parameters (host, username, remote_path)"
+
+        # Handle relative paths
+        if not remote_path.startswith('/'):
+            default_remote_dir = config.get('default_remote_dir', '')
+            if default_remote_dir:
+                remote_path = os.path.join(default_remote_dir, remote_path).replace('\\', '/')
+
+        # Connect via SSH
+        client = get_ssh_client(host, port, username, password, key_file)
+        sftp = client.open_sftp()
+
+        # Get the basename of remote path for local path
+        remote_basename = os.path.basename(remote_path.rstrip('/'))
+        local_path = os.path.join(local_dir, remote_basename)
+
+        # Download recursively
+        downloaded_files = _download_recursive(sftp, remote_path, local_path, allowed_extensions)
+
+        sftp.close()
+        client.close()
+
+        # Format result
+        result = f"=== Download Completed ===\n"
+        result += f"Remote Path: {remote_path}\n"
+        result += f"Local Path: {local_dir}\n"
+        result += f"Downloaded {len(downloaded_files)} file(s)\n\n"
+
+        if allowed_extensions:
+            result += f"File Extension Filter: {', '.join(allowed_extensions)}\n\n"
+
+        if downloaded_files:
+            result += "Downloaded files:\n"
+            for file in downloaded_files:
+                result += f"  - {file}\n"
+        else:
+            result += "No files downloaded (check extension filter settings)\n"
+
+        return result
+
+    except Exception as e:
+        return f"Error downloading file: {str(e)}"
+
 if __name__ == "__main__":
     # Run the MCP server
     mcp.run()

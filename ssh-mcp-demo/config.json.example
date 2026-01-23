@@ -5,5 +5,10 @@
   "password": "your_password",
   "key_file": "/path/to/your/private/key",
   "default_remote_dir": "/home/user/scripts",
-  "default_script": "run.sh"
+  "default_script": "run.sh",
+  "default_local_download_dir": "./downloads",
+  "allowed_file_extensions": [
+    ".pem",
+    ".yaml"
+  ]
 }
