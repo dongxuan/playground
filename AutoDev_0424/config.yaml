@@ -1,0 +1,6 @@
+llm:
+  # MetaGPT actually reads ~/.metagpt/config2.yaml; keep credentials out of this repo.
+  provider: configured_by_metagpt
+tdd:
+  max_fix_rounds: 2
+  test_command: python -m pytest -q
