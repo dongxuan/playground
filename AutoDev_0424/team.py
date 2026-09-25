@@ -32,9 +32,11 @@ class AutoDevTeam:
         self.log_dir = Path(__file__).parent / "logs"
         self.tracker = WorkflowTracker(self.log_dir / log_name)
 
-    async def _approve(self, stage: str, artifact: Path) -> None:
-        approved = await self.reviewer.review(stage, str(artifact))
-        self.tracker.record("Human Reviewer", "approved" if approved else "rejected", f"{stage}: {artifact}")
+    async def _approve(self, stage: str, artifacts: Path | list[Path] | tuple[Path, ...]) -> None:
+        paths = [artifacts] if isinstance(artifacts, Path) else list(artifacts)
+        display = ", ".join(str(path) for path in paths)
+        approved = await self.reviewer.review(stage, display)
+        self.tracker.record("Human Reviewer", "approved" if approved else "rejected", f"{stage}: {display}")
         if not approved:
             raise RuntimeError(f"Human reviewer rejected {stage}")
 
@@ -56,14 +58,16 @@ class AutoDevTeam:
         await self._approve("技术设计", design_path)
 
         self.tracker.record(self.qa.profile, "started", "先编写测试")
-        tests_path, tests = await self.qa.actions[0].run(self.project, prd, design)
-        self.tracker.record(self.qa.profile, "completed", str(tests_path))
-        await self._approve("测试用例", tests_path)
+        test_paths, tests = await self.qa.actions[0].run(self.project, prd, design, snapshot)
+        self.tracker.record(self.qa.profile, "completed", ", ".join(str(path) for path in test_paths))
+        await self._approve("测试用例", test_paths)
 
         self.tracker.record(self.developer.profile, "started", "根据设计和测试编写实现")
-        code_path, implementation = await self.developer.actions[0].run(self.project, design, tests, snapshot)
-        self.tracker.record(self.developer.profile, "completed", str(code_path))
-        await self._approve("实现代码", code_path)
+        code_paths, _ = await self.developer.actions[0].run(
+            self.project, design, tests, scan_project(self.project)
+        )
+        self.tracker.record(self.developer.profile, "completed", ", ".join(str(path) for path in code_paths))
+        await self._approve("实现代码", code_paths)
 
         syntax_ok, syntax_output = await self.static_check.run(self.project)
         self.tracker.record("Static Check", "passed" if syntax_ok else "failed", syntax_output)
@@ -75,7 +79,7 @@ class AutoDevTeam:
             self.tracker.record("Code Review & Fix", "started", f"修复轮次 {round_number}")
             try:
                 review = await self.developer.actions[1].run(
-                    self.project, design, tests, implementation, report.output
+                    self.project, design, scan_project(self.project), report.output
                 )
             except (RuntimeError, ValueError) as error:
                 self.tracker.record("Code Review & Fix", "unavailable", str(error))
@@ -83,16 +87,12 @@ class AutoDevTeam:
             self.tracker.record(
                 "Code Review & Fix",
                 "completed",
-                f"changed={review.changed} target={review.target} path={review.path}",
+                f"changed={review.changed} target={review.target} paths={','.join(str(path) for path in review.paths)}",
             )
             if not review.changed:
                 self.tracker.record("Code Review & Fix", "stopped", "审查未产生修改，停止无进展重试")
                 break
-            if review.target == "code":
-                implementation = review.content
-            elif review.target == "tests":
-                tests = review.content
-            await self._approve(f"{review.target} 修复 {round_number}", review.path)
+            await self._approve(f"{review.target} 修复 {round_number}", review.paths)
             report = await self._test()
 
         self.tracker.record("Team", "completed" if report.passed else "failed", f"pytest log={report.log_path}")

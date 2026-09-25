@@ -11,15 +11,22 @@ class CodeReviewTests(unittest.TestCase):
             project = Path(directory)
             result = apply_review_response(
                 project=project,
-                response="TEST_FIX\n```python\ndef test_true_is_valid():\n    assert True\n```",
-                implementation="def feature(): pass",
-                tests="def test_wrong(): assert False",
+                response='''```json
+                {
+                  "decision": "TEST_FIX",
+                  "files": [
+                    {"path": "tests/test_unit.py", "content": "def test_unit():\\n    assert True"},
+                    {"path": "tests/test_integration.py", "content": "def test_integration():\\n    assert True"}
+                  ]
+                }
+                ```''',
             )
 
             self.assertTrue(result.changed)
             self.assertEqual(result.target, "tests")
-            self.assertEqual(result.path, (project / "tests/test_generated.py").resolve())
-            self.assertIn("test_true_is_valid", result.path.read_text())
+            self.assertEqual(len(result.paths), 2)
+            self.assertIn("test_unit", (project / "tests/test_unit.py").read_text())
+            self.assertIn("test_integration", (project / "tests/test_integration.py").read_text())
 
 
 if __name__ == "__main__":

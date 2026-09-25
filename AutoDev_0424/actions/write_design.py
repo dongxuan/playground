@@ -11,7 +11,9 @@ class WriteDesign(Action):
 
     async def run(self, project: Path, prd: str, snapshot: str) -> tuple[Path, str]:
         prompt = f"""你是架构师。根据 PRD 和已有代码写最小技术设计。
-约束：Python 标准库优先；实现放在 src/feature_B.py；测试放在 tests/test_generated.py；说明公开接口、数据流、错误处理和测试策略。
+先分析项目现有模块、职责和测试约定，再决定文件方案。需求可能修改原有代码，也可能新增一个或多个文件；不要默认创建 feature_B.py。
+明确列出每个需要新增或修改的相对路径及理由。优先复用现有模块，只有职责清晰且确有必要时才新增文件。
+Python 标准库优先，并说明公开接口、数据流、错误处理和测试策略。
 只输出 Markdown 正文。
 
 PRD：
