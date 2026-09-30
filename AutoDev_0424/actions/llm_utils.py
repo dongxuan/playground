@@ -3,6 +3,12 @@ from metagpt.actions import Action
 from tools.project_utils import FileChange, parse_file_changes
 
 
+def with_feedback(prompt: str, feedback: str) -> str:
+    if not feedback:
+        return prompt
+    return prompt + f"\n\n人工审阅未通过，请结合以下意见与上一版产物重新执行当前任务。保持原有输出格式。\n{feedback}"
+
+
 async def ask_nonempty(action: Action, prompt: str, attempts: int = 2) -> str:
     """Retry an occasional empty provider response; never accept an empty artifact."""
     for _ in range(attempts):

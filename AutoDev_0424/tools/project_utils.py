@@ -1,5 +1,6 @@
 import json
 import re
+from glob import escape
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -76,6 +77,12 @@ def write_project_file(project_path: Path, relative_path: str, content: str) -> 
         raise ValueError(f"Refusing to write outside project: {relative_path}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(content.rstrip() + "\n", encoding="utf-8")
+    # Same-size edits within one second can otherwise reuse stale timestamp-based bytecode.
+    if destination.suffix == ".py":
+        cache_dir = destination.parent / "__pycache__"
+        if root in cache_dir.resolve().parents:
+            for cache in cache_dir.glob(f"{escape(destination.stem)}.*.pyc"):
+                cache.unlink()
     return destination
 
 
