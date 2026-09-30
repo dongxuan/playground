@@ -9,16 +9,19 @@ from roles.developer import Developer
 from roles.human_reviewer import HumanReviewer
 from roles.product_manager import ProductManager
 from roles.qa_engineer import QAEngineer
-from tools.project_utils import project_name, scan_project
+from tools.project_utils import feature_name_from_requirement, project_name, scan_project
 from tools.workflow_tracker import WorkflowTracker
 
 
 class AutoDevTeam:
     """A small, explicit MetaGPT role/action pipeline for an existing project."""
 
-    def __init__(self, project: Path, requirement: str, auto_approve: bool, max_fix_rounds: int = 2) -> None:
+    def __init__(self, project: Path, requirement: str, auto_approve: bool, max_fix_rounds: int) -> None:
+        if isinstance(max_fix_rounds, bool) or not isinstance(max_fix_rounds, int) or max_fix_rounds < 0:
+            raise ValueError("max_fix_rounds must be a non-negative integer")
         self.project = project.resolve()
         self.requirement = requirement
+        self.feature_name = feature_name_from_requirement(requirement)
         self.max_fix_rounds = max_fix_rounds
         self.pm = ProductManager()
         self.architect = Architect()
@@ -44,16 +47,31 @@ class AutoDevTeam:
         if not self.project.is_dir():
             raise FileNotFoundError(f"Target project does not exist: {self.project}")
 
-        self.tracker.record("Team", "started", f"project={project_name(self.project)} requirement={self.requirement}")
+        self.tracker.record(
+            "Team",
+            "started",
+            f"project={project_name(self.project)} requirement={self.requirement} "
+            f"feature_name={self.feature_name} max_fix_rounds={self.max_fix_rounds}",
+        )
         snapshot = scan_project(self.project)
 
         self.tracker.record(self.pm.profile, "started", "分析已有代码并编写 PRD")
-        prd_path, prd = await self.pm.actions[0].run(self.project, self.requirement, snapshot)
+        prd_path, prd = await self.pm.actions[0].run(
+            self.project,
+            self.requirement,
+            snapshot,
+            self.feature_name,
+        )
         self.tracker.record(self.pm.profile, "completed", str(prd_path))
         await self._approve("PRD", prd_path)
 
         self.tracker.record(self.architect.profile, "started", "编写技术设计")
-        design_path, design = await self.architect.actions[0].run(self.project, prd, snapshot)
+        design_path, design = await self.architect.actions[0].run(
+            self.project,
+            prd,
+            snapshot,
+            self.feature_name,
+        )
         self.tracker.record(self.architect.profile, "completed", str(design_path))
         await self._approve("技术设计", design_path)
 

@@ -1,11 +1,24 @@
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 
 TEXT_SUFFIXES = {".py", ".md", ".txt", ".toml", ".yaml", ".yml"}
 IGNORED_PARTS = {".git", ".venv", "__pycache__", ".pytest_cache"}
+COMMON_REQUIREMENT_WORDS = {
+    "add",
+    "api",
+    "create",
+    "feature",
+    "implement",
+    "new",
+    "python",
+    "system",
+    "update",
+    "user",
+}
 
 
 @dataclass(frozen=True)
@@ -17,6 +30,23 @@ class FileChange:
 def project_name(project_path: Path) -> str:
     """Return the final component of a project path."""
     return project_path.resolve().name
+
+
+def feature_name_from_requirement(requirement: str, now: datetime | None = None) -> str:
+    """Return a conservative, filesystem-safe short name for a requirement."""
+    candidate_groups = (
+        re.findall(r"(?<![A-Za-z0-9_])([A-Za-z][A-Za-z0-9_]*)\s*\(", requirement),
+        re.findall(r"`([A-Za-z][A-Za-z0-9_-]*)`", requirement),
+        re.findall(r"(?<![A-Za-z0-9_])([A-Za-z][A-Za-z0-9_-]{2,})(?![A-Za-z0-9_])", requirement),
+    )
+    for candidates in candidate_groups:
+        for candidate in candidates:
+            normalized = candidate.lower().replace("-", "_").strip("_")[:48].rstrip("_")
+            if normalized and normalized not in COMMON_REQUIREMENT_WORDS:
+                return normalized
+
+    timestamp = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
+    return f"feature_{timestamp}"
 
 
 def scan_project(project_path: Path, max_chars: int = 24_000) -> str:

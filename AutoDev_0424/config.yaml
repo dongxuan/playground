@@ -2,5 +2,6 @@ llm:
   # MetaGPT actually reads ~/.metagpt/config2.yaml; keep credentials out of this repo.
   provider: configured_by_metagpt
 tdd:
+  # Used when --max-fix-rounds is not supplied. CLI options take precedence.
   max_fix_rounds: 2
   test_command: python -m pytest -q
